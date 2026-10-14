@@ -1,0 +1,86 @@
+# Drop compose.yml and .sandbox/ into the project root. See README.md.
+# Required exports: GITHUB_PAT, GIT_USER_NAME, GIT_USER_EMAIL.
+# Optional HOST_UID/HOST_GID build arguments match the host user (default 1000).
+# Host ~/.pi/agent and ~/.agents/skills
+# must exist; they stay mounted read-only under /seed. The entrypoint copies them
+# once into writable volumes, including auth.json but excluding sessions/install.
+#
+# docker compose up --build -d                 Start the dev environment, not DB
+# docker compose exec pi tmux new-session -A -s dev
+#                                            Run pi / dev servers inside tmux
+# docker compose up -d db                     Start PostgreSQL when needed
+# docker compose stop db                      Stop DB without deleting its data
+# docker compose down                         Keep named volumes
+# docker compose down -v                      DELETE Pi state, skills and DB data
+#
+# Run FastAPI on 0.0.0.0:8000 and SvelteKit/Vite on 0.0.0.0:5173.
+# No Docker socket: additional Compose services are managed from the host.
+
+services:
+    pi:
+        build:
+            context: .sandbox
+            dockerfile: Dockerfile
+            args:
+                USER_UID: ${HOST_UID:-1000}
+                USER_GID: ${HOST_GID:-1000}
+        image: "${COMPOSE_PROJECT_NAME}-pi:local"
+
+        init: true
+        restart: unless-stopped
+        working_dir: /workspace
+
+        environment:
+            GITHUB_PAT: ${GITHUB_PAT:?GITHUB_PAT must be exported}
+            GIT_USER_NAME: ${GIT_USER_NAME:?GIT_USER_NAME must be exported}
+            GIT_USER_EMAIL: ${GIT_USER_EMAIL:?GIT_USER_EMAIL must be exported}
+            GIT_ASKPASS: /usr/local/bin/git-askpass
+            GIT_TERMINAL_PROMPT: "0"
+            TERM: xterm-256color
+            OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+            OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
+            TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+            DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-appdb}}
+            POSTGRES_URL: ${POSTGRES_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-appdb}}
+        ports:
+            - "127.0.0.1:${FASTAPI_PORT:-8000}:8000"
+            - "127.0.0.1:${SVELTEKIT_PORT:-5173}:5173"
+        volumes:
+            - .:/workspace
+            - pi-data:/home/node/.pi
+            - agent-skills:/home/node/.agents/skills
+            -
+                type: bind
+                source: "${HOME:?HOME must be set}/.pi/agent"
+                target: /seed/pi
+                read_only: true
+                bind:
+                    create_host_path: false
+            -
+                type: bind
+                source: "${HOME:?HOME must be set}/.agents/skills"
+                target: /seed/skills
+                read_only: true
+                bind:
+                    create_host_path: false
+
+    db:
+        image: postgres:17-alpine
+        profiles: [db]
+        restart: unless-stopped
+        environment:
+            POSTGRES_USER: ${POSTGRES_USER:-postgres}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+            POSTGRES_DB: ${POSTGRES_DB:-appdb}
+        volumes:
+            - postgres-data:/var/lib/postgresql/data
+        healthcheck:
+            test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+            interval: 5s
+            timeout: 3s
+            retries: 10
+
+volumes:
+    pi-data:
+    agent-skills:
+    postgres-data:
