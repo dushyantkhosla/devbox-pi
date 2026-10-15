@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+# Global default interpreter; no-op once the container layer already has it.
+uv python install 3.14 --default
+
 # Mark each volume separately; subsequent starts must not overwrite local edits.
 if [[ ! -f "$HOME/.pi/.seeded-from-host" ]]; then
     mkdir -p "$HOME/.pi/agent"
