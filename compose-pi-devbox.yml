@@ -1,4 +1,4 @@
-# Drop compose.yml and .sandbox/ into the project root. See README.md.
+# Drop this file and .sandbox/ into the project root. See README.md.
 # Required exports: GITHUB_PAT, GIT_USER_NAME, GIT_USER_EMAIL.
 # Optional HOST_UID/HOST_GID build arguments match the host user (default 1000).
 # Host ~/.pi/agent and ~/.agents/skills
